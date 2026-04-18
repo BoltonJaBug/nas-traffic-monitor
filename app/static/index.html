@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>仪表盘 - NAS 流量监控</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="header">
+    <h1>NAS 流量监控</h1>
+    <nav id="nav"></nav>
+  </div>
+  <div class="container">
+    <div class="grid grid-4" id="stats"></div>
+    <div class="card">
+      <div class="card-title">服务状态</div>
+      <table id="service-table">
+        <thead>
+          <tr><th>服务名称</th><th>来源</th><th>状态</th><th>1h 互联网上传</th><th>1h 互联网下载</th><th>互联网连接数</th><th>操作</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">最近告警</div>
+      <table id="alert-table">
+        <thead>
+          <tr><th>时间</th><th>服务</th><th>规则</th><th>当前值</th><th>阈值</th><th>消息</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="/js/common.js"></script>
+  <script>
+    checkAuth();
+    loadNav('dashboard');
+
+    async function loadDashboard() {
+      try {
+        const data = await api.get('/api/dashboard');
+        document.getElementById('stats').innerHTML = `
+          <div class="card stat-card"><div class="stat-value">${data.total_services}</div><div class="stat-label">总服务数</div></div>
+          <div class="card stat-card"><div class="stat-value">${data.running_services}</div><div class="stat-label">运行中</div></div>
+          <div class="card stat-card"><div class="stat-value">${data.total_services - data.running_services}</div><div class="stat-label">已停止</div></div>
+          <div class="card stat-card"><div class="stat-value">${data.recent_alerts.length}</div><div class="stat-label">最近告警</div></div>
+        `;
+
+        const tbody = document.querySelector('#service-table tbody');
+        tbody.innerHTML = data.services.map(s => `
+          <tr>
+            <td><a href="/service-detail.html?id=${s.service_id}">${s.name}</a></td>
+            <td><span class="badge badge-blue">${s.source}</span></td>
+            <td><span class="badge ${s.status === 'running' ? 'badge-green' : 'badge-gray'}">${s.status === 'running' ? '运行中' : '已停止'}</span></td>
+            <td>${formatBytes(s.wan_tx_1h || 0)}</td>
+            <td>${formatBytes(s.wan_rx_1h || 0)}</td>
+            <td>${s.wan_connections || 0}</td>
+            <td><a href="/service-detail.html?id=${s.service_id}">详情</a></td>
+          </tr>
+        `).join('');
+
+        const atbody = document.querySelector('#alert-table tbody');
+        if (data.recent_alerts.length === 0) {
+          atbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999">暂无告警</td></tr>';
+        } else {
+          atbody.innerHTML = data.recent_alerts.map(a => `
+            <tr>
+              <td>${formatDate(a.triggered_at)}</td>
+              <td>${a.service_name || a.service_id}</td>
+              <td><span class="badge badge-orange">${a.rule_id}</span></td>
+              <td>${a.metric_value}</td>
+              <td>${a.threshold}</td>
+              <td>${a.message}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    loadDashboard();
+    setInterval(loadDashboard, 60000);
+  </script>
+</body>
+</html>

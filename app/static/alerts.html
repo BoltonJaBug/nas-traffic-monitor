@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>告警记录 - NAS 流量监控</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="header">
+    <h1>NAS 流量监控</h1>
+    <nav id="nav"></nav>
+  </div>
+  <div class="container">
+    <div class="card">
+      <div class="card-title">告警记录</div>
+      <table id="alert-table">
+        <thead>
+          <tr><th>时间</th><th>服务</th><th>规则</th><th>当前值</th><th>阈值</th><th>消息</th><th>已通知</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="/js/common.js"></script>
+  <script>
+    checkAuth();
+    loadNav('alerts');
+
+    async function loadAlerts() {
+      try {
+        const alerts = await api.get('/api/alerts?limit=200');
+        const tbody = document.querySelector('#alert-table tbody');
+        if (alerts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999">暂无告警记录</td></tr>';
+          return;
+        }
+        tbody.innerHTML = alerts.map(a => `
+          <tr>
+            <td>${formatDate(a.triggered_at)}</td>
+            <td>${a.service_name || a.service_id}</td>
+            <td><span class="badge badge-orange">${a.rule_id}</span></td>
+            <td>${a.metric_value}</td>
+            <td>${a.threshold}</td>
+            <td>${a.message}</td>
+            <td>${a.notified ? '<span class="badge badge-green">是</span>' : '<span class="badge badge-red">否</span>'}</td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    loadAlerts();
+  </script>
+</body>
+</html>

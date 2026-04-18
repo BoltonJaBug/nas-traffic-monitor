@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>服务详情 - NAS 流量监控</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div class="header">
+    <h1>NAS 流量监控</h1>
+    <nav id="nav"></nav>
+  </div>
+  <div class="container">
+    <div class="card">
+      <div class="card-title" id="service-name">加载中...</div>
+      <div id="service-info"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">流量趋势</div>
+      <div class="chart-container"><canvas id="trafficChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">连接数趋势</div>
+      <div class="chart-container"><canvas id="connChart"></canvas></div>
+    </div>
+  </div>
+  <script src="/js/common.js"></script>
+  <script>
+    checkAuth();
+    loadNav('services');
+
+    const params = new URLSearchParams(window.location.search);
+    const serviceId = params.get('id');
+
+    if (!serviceId) {
+      window.location.href = '/services.html';
+    }
+
+    let trafficChart, connChart;
+
+    async function loadDetail() {
+      try {
+        const services = await api.get('/api/services');
+        const svc = services.find(s => s.service_id === serviceId);
+        if (!svc) {
+          document.getElementById('service-name').textContent = '服务未找到';
+          return;
+        }
+
+        document.getElementById('service-name').textContent = svc.name;
+        document.getElementById('service-info').innerHTML = `
+          <div class="grid grid-3">
+            <div><strong>来源:</strong> <span class="badge badge-blue">${svc.source}</span></div>
+            <div><strong>状态:</strong> <span class="badge ${svc.status === 'running' ? 'badge-green' : 'badge-gray'}">${svc.status === 'running' ? '运行中' : '已停止'}</span></div>
+            <div><strong>镜像:</strong> ${svc.image || '-'}</div>
+          </div>
+        `;
+
+        const traffic = await api.get(`/api/services/${serviceId}/traffic`);
+        if (traffic.length > 0) {
+          const labels = traffic.map(t => new Date(t.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+          const wanTx = traffic.map(t => (t.wan_tx_bytes / 1024 / 1024).toFixed(2));
+          const wanRx = traffic.map(t => (t.wan_rx_bytes / 1024 / 1024).toFixed(2));
+          const lanTx = traffic.map(t => (t.lan_tx_bytes / 1024 / 1024).toFixed(2));
+          const lanRx = traffic.map(t => (t.lan_rx_bytes / 1024 / 1024).toFixed(2));
+
+          if (trafficChart) trafficChart.destroy();
+          trafficChart = new Chart(document.getElementById('trafficChart'), {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [
+                { label: '互联网上传 (MB)', data: wanTx, borderColor: '#e53935', backgroundColor: 'rgba(229,57,53,0.1)', fill: true, tension: 0.3 },
+                { label: '互联网下载 (MB)', data: wanRx, borderColor: '#1e88e5', backgroundColor: 'rgba(30,136,229,0.1)', fill: true, tension: 0.3 },
+                { label: '局域网上传 (MB)', data: lanTx, borderColor: '#fb8c00', backgroundColor: 'rgba(251,140,0,0.1)', fill: false, tension: 0.3 },
+                { label: '局域网下载 (MB)', data: lanRx, borderColor: '#43a047', backgroundColor: 'rgba(67,160,71,0.1)', fill: false, tension: 0.3 },
+              ],
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: { y: { beginAtZero: true } },
+            },
+          });
+        }
+
+        const conns = await api.get(`/api/services/${serviceId}/connections`);
+        if (conns.length > 0) {
+          const labels = conns.map(c => new Date(c.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+          const wanConn = conns.map(c => c.wan_connections);
+          const lanConn = conns.map(c => c.lan_connections);
+
+          if (connChart) connChart.destroy();
+          connChart = new Chart(document.getElementById('connChart'), {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [
+                { label: '互联网连接数', data: wanConn, borderColor: '#e53935', tension: 0.3 },
+                { label: '局域网连接数', data: lanConn, borderColor: '#43a047', tension: 0.3 },
+              ],
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: { y: { beginAtZero: true } },
+            },
+          });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    loadDetail();
+  </script>
+</body>
+</html>

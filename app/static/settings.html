@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>系统设置 - NAS 流量监控</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="header">
+    <h1>NAS 流量监控</h1>
+    <nav id="nav"></nav>
+  </div>
+  <div class="container">
+    <div class="card">
+      <div class="card-title">告警阈值配置</div>
+      <div id="alert-msg"></div>
+      <table id="alert-config-table">
+        <thead>
+          <tr><th>规则 ID</th><th>指标</th><th>阈值</th><th>窗口(分钟)</th><th>启用</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="saveAlertConfig()">保存告警配置</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">飞书 Webhook 配置</div>
+      <div id="webhook-msg"></div>
+      <div class="form-group">
+        <label>Webhook URL</label>
+        <input type="text" id="webhook_url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="saveWebhook()">保存</button>
+        <button class="btn" style="background:#e3f2fd;color:#1565c0" onclick="testWebhook()">测试发送</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">修改密码</div>
+      <div id="pwd-msg"></div>
+      <div class="form-group">
+        <label>原密码</label>
+        <input type="password" id="old_password">
+      </div>
+      <div class="form-group">
+        <label>新密码</label>
+        <input type="password" id="new_password">
+      </div>
+      <div class="form-group">
+        <label>确认新密码</label>
+        <input type="password" id="confirm_password">
+      </div>
+      <button class="btn btn-primary" onclick="changePwd()">修改密码</button>
+    </div>
+  </div>
+  <script src="/js/common.js"></script>
+  <script>
+    checkAuth();
+    loadNav('settings');
+
+    let alertConfigs = [];
+
+    async function loadAlertConfig() {
+      try {
+        alertConfigs = await api.get('/api/alerts/config');
+        const tbody = document.querySelector('#alert-config-table tbody');
+        tbody.innerHTML = alertConfigs.map(c => `
+          <tr>
+            <td>${c.rule_id}</td>
+            <td>${c.metric}</td>
+            <td><input type="number" id="threshold-${c.rule_id}" value="${c.threshold}" style="width:150px"></td>
+            <td><input type="number" id="window-${c.rule_id}" value="${c.window_minutes}" style="width:80px"></td>
+            <td><input type="checkbox" id="enabled-${c.rule_id}" ${c.enabled ? 'checked' : ''}></td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function saveAlertConfig() {
+      try {
+        const configs = alertConfigs.map(c => ({
+          rule_id: c.rule_id,
+          threshold: parseFloat(document.getElementById(`threshold-${c.rule_id}`).value),
+          window_minutes: parseInt(document.getElementById(`window-${c.rule_id}`).value),
+          enabled: document.getElementById(`enabled-${c.rule_id}`).checked ? 1 : 0,
+        }));
+        await api.put('/api/alerts/config', configs);
+        showMsg('alert-msg', '告警配置已保存', true);
+      } catch (e) {
+        showMsg('alert-msg', e.message, false);
+      }
+    }
+
+    async function loadWebhook() {
+      try {
+        const data = await api.get('/api/settings/webhook');
+        document.getElementById('webhook_url').value = data.url || '';
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function saveWebhook() {
+      try {
+        const url = document.getElementById('webhook_url').value.trim();
+        await api.put('/api/settings/webhook', { url });
+        showMsg('webhook-msg', 'Webhook 地址已保存', true);
+      } catch (e) {
+        showMsg('webhook-msg', e.message, false);
+      }
+    }
+
+    async function testWebhook() {
+      try {
+        const url = document.getElementById('webhook_url').value.trim();
+        if (!url) { showMsg('webhook-msg', '请先填写 Webhook URL', false); return; }
+        const data = await api.post('/api/settings/webhook/test', { url });
+        showMsg('webhook-msg', data.message, data.success);
+      } catch (e) {
+        showMsg('webhook-msg', e.message, false);
+      }
+    }
+
+    async function changePwd() {
+      const oldPwd = document.getElementById('old_password').value;
+      const newPwd = document.getElementById('new_password').value;
+      const confirmPwd = document.getElementById('confirm_password').value;
+      if (!oldPwd || !newPwd) { showMsg('pwd-msg', '请填写完整', false); return; }
+      if (newPwd !== confirmPwd) { showMsg('pwd-msg', '两次密码不一致', false); return; }
+      try {
+        await api.put('/api/auth/password', { old_password: oldPwd, new_password: newPwd });
+        showMsg('pwd-msg', '密码修改成功', true);
+        document.getElementById('old_password').value = '';
+        document.getElementById('new_password').value = '';
+        document.getElementById('confirm_password').value = '';
+      } catch (e) {
+        showMsg('pwd-msg', e.message, false);
+      }
+    }
+
+    function showMsg(id, text, success) {
+      const el = document.getElementById(id);
+      el.className = success ? 'alert-success' : 'alert-error';
+      el.textContent = text;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    loadAlertConfig();
+    loadWebhook();
+  </script>
+</body>
+</html>

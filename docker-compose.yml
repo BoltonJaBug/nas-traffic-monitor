@@ -1,0 +1,21 @@
+services:
+  nas-monitor:
+    build: .
+    container_name: nas-traffic-monitor
+    network_mode: host
+    pid: host
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - nas-monitor-data:/app/data
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - JWT_SECRET=${JWT_SECRET:-please-change-this-secret}
+      - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
+      - DB_PATH=${DB_PATH:-/app/data/monitor.db}
+    restart: unless-stopped
+
+volumes:
+  nas-monitor-data:

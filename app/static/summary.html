@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>每日汇总 - NAS 流量监控</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div class="header">
+    <h1>NAS 流量监控</h1>
+    <nav id="nav"></nav>
+  </div>
+  <div class="container">
+    <div class="card">
+      <div class="card-title">流量趋势</div>
+      <div class="chart-container"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">每日汇总</div>
+      <div style="margin-bottom:12px;display:flex;gap:8px">
+        <input type="date" id="start_date">
+        <input type="date" id="end_date">
+        <button class="btn btn-primary" onclick="loadSummaries()">查询</button>
+      </div>
+      <table id="summary-table">
+        <thead>
+          <tr><th>日期</th><th>服务</th><th>局域网下载</th><th>局域网上传</th><th>互联网下载</th><th>互联网上传</th><th>连接峰值</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="/js/common.js"></script>
+  <script>
+    checkAuth();
+    loadNav('summary');
+
+    let trendChart;
+
+    async function loadSummaries() {
+      const start = document.getElementById('start_date').value;
+      const end = document.getElementById('end_date').value;
+      let url = '/api/daily-summary';
+      if (start && end) url += `?start_date=${start}&end_date=${end}`;
+
+      try {
+        const summaries = await api.get(url);
+        const tbody = document.querySelector('#summary-table tbody');
+        tbody.innerHTML = summaries.map(s => `
+          <tr>
+            <td>${s.date}</td>
+            <td>${s.service_id}</td>
+            <td>${formatBytes(s.lan_rx_bytes)}</td>
+            <td>${formatBytes(s.lan_tx_bytes)}</td>
+            <td>${formatBytes(s.wan_rx_bytes)}</td>
+            <td>${formatBytes(s.wan_tx_bytes)}</td>
+            <td>${s.peak_wan_connections}</td>
+          </tr>
+        `).join('');
+
+        const byDate = {};
+        summaries.forEach(s => {
+          if (!byDate[s.date]) byDate[s.date] = { wan_rx: 0, wan_tx: 0, lan_rx: 0, lan_tx: 0 };
+          byDate[s.date].wan_rx += s.wan_rx_bytes;
+          byDate[s.date].wan_tx += s.wan_tx_bytes;
+          byDate[s.date].lan_rx += s.lan_rx_bytes;
+          byDate[s.date].lan_tx += s.lan_tx_bytes;
+        });
+
+        const dates = Object.keys(byDate).sort();
+        if (dates.length > 0) {
+          if (trendChart) trendChart.destroy();
+          trendChart = new Chart(document.getElementById('trendChart'), {
+            type: 'bar',
+            data: {
+              labels: dates,
+              datasets: [
+                { label: '互联网下载', data: dates.map(d => (byDate[d].wan_rx / 1024 / 1024 / 1024).toFixed(2)), backgroundColor: '#1e88e5' },
+                { label: '互联网上传', data: dates.map(d => (byDate[d].wan_tx / 1024 / 1024 / 1024).toFixed(2)), backgroundColor: '#e53935' },
+                { label: '局域网下载', data: dates.map(d => (byDate[d].lan_rx / 1024 / 1024 / 1024).toFixed(2)), backgroundColor: '#43a047' },
+                { label: '局域网上传', data: dates.map(d => (byDate[d].lan_tx / 1024 / 1024 / 1024).toFixed(2)), backgroundColor: '#fb8c00' },
+              ],
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: { y: { beginAtZero: true, title: { display: true, text: 'GB' } } },
+            },
+          });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const today = new Date();
+    const monthAgo = new Date(today.getTime() - 30 * 86400000);
+    document.getElementById('end_date').value = today.toISOString().split('T')[0];
+    document.getElementById('start_date').value = monthAgo.toISOString().split('T')[0];
+    loadSummaries();
+  </script>
+</body>
+</html>
